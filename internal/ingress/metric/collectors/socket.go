@@ -235,15 +235,17 @@ func NewSocketCollector(pod, namespace, class string, metricsPerHost bool, bucke
 func (sc *SocketCollector) handleMessage(msg []byte) {
 	klog.V(5).InfoS("Metric", "message", string(msg))
 
-	// Unmarshal bytes
-	var statsBatch []socketData
-	err := jsoniter.ConfigCompatibleWithStandardLibrary.Unmarshal(msg, &statsBatch)
-	if err != nil {
-		klog.ErrorS(err, "Unexpected error deserializing JSON", "payload", string(msg))
-		return
-	}
+	// Use iterator to unmarshal socket data
+	iter := jsoniter.ConfigCompatibleWithStandardLibrary.BorrowIterator(msg)
 
-	for _, stats := range statsBatch {
+	for iter.ReadArray() {
+		var stats socketData
+		iter.ReadVal(&stats)
+		if iter.Error != nil {
+			klog.ErrorS(iter.Error, "Unexpected error deserializing JSON", "payload", string(msg))
+			return
+		}
+
 		if sc.metricsPerHost && !sc.hosts.Has(stats.Host) {
 			klog.V(3).InfoS("Skipping metric for host not being served", "host", stats.Host)
 			continue
